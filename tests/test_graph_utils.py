@@ -1,9 +1,11 @@
 import pytest
 import networkx as nx
+import cfpq_data
 from pathlib import Path
 from project.graph_utils import (
     get_graph_basic_info,
     create_and_save_labeled_two_cycles_graph,
+    graph_to_nfa,
     GraphBasicInfo,
 )
 
@@ -62,12 +64,12 @@ def test_get_graph_basic_info(
 @pytest.mark.parametrize(
     "first_cycle_nodes_number, second_cycle_nodes_number, labels, expected_graph_path",
     [
-        (5, 2, ("7", "8"), Path(EXPECTED_PATH, "expected_graph_1.dot")),
+        (5, 2, ("7", "8"), Path(EXPECTED_PATH, "graph_example_1.dot")),
         (
             1,
             5,
             ("8", "1"),
-            Path(EXPECTED_PATH, "expected_graph_2.dot"),
+            Path(EXPECTED_PATH, "graph_example_2.dot"),
         ),
     ],
 )
@@ -83,3 +85,20 @@ def test_create_and_save_labeled_two_cycles_graph(
     actual_graph = nx.nx_pydot.read_dot(tmp_filepath)
 
     assert nx.utils.graphs_equal(expected_graph, actual_graph)
+
+
+@pytest.mark.parametrize(
+    "graph_path, start_states, final_states",
+    [
+        (Path(EXPECTED_PATH, "graph_example_1.dot"), {4}, {6}),
+        (Path(EXPECTED_PATH, "graph_example_2.dot"), {0, 1}, {5, 4}),
+    ],
+)
+def test_graph_to_nfa(graph_path, start_states, final_states):
+    graph = nx.nx_pydot.read_dot(graph_path)
+
+    res = graph_to_nfa(graph, start_states, final_states)
+
+    assert res.start_states == start_states
+    assert res.final_states == final_states
+    assert res.symbols == set(cfpq_data.get_sorted_labels(graph))
