@@ -1,5 +1,9 @@
 from dataclasses import dataclass
-from typing import Tuple, List, Any
+from pyformlang.finite_automaton import (
+    NondeterministicFiniteAutomaton,
+    State,
+)
+from typing import Tuple, List, Any, Set
 import networkx as nx
 import cfpq_data
 
@@ -38,3 +42,26 @@ def create_and_save_labeled_two_cycles_graph(
 
     graph_in_dot = nx.nx_pydot.to_pydot(graph)
     graph_in_dot.write(file_path)
+
+
+def graph_to_nfa(
+    graph: nx.MultiDiGraph, start_states: Set[int], final_states: Set[int]
+) -> NondeterministicFiniteAutomaton:
+    eps_nfa = NondeterministicFiniteAutomaton().from_networkx(graph)
+    nfa = eps_nfa.remove_epsilon_transitions()
+
+    nodes = set(int(node) for node in graph.nodes)
+
+    if not start_states:
+        start_states = nodes
+
+    for start_state in start_states:
+        nfa.add_start_state(State(start_state))
+
+    if not final_states:
+        final_states = nodes
+
+    for final_state in final_states:
+        nfa.add_final_state(State(final_state))
+
+    return nfa
