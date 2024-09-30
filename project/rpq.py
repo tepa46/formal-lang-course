@@ -80,12 +80,12 @@ def ms_bfs_based_rpq(
     )
 
     dfa_decomposed_matrices = dfa_adjacency_matrix_fa.boolean_decomposition_matrices
-    dfa_decomposed_transposed_matrices = dict(
-        zip(
-            dfa_decomposed_matrices.keys(),
-            map(lambda x: x.transpose(), dfa_decomposed_matrices.values()),
-        )
-    )
+    dfa_decomposed_transposed_matrices = {}
+
+    for label in labels:
+        dfa_decomposed_transposed_matrices[label] = dfa_decomposed_matrices[
+            label
+        ].transpose()
 
     nfa_decomposed_matrices = nfa_adjacency_matrix_fa.boolean_decomposition_matrices
 
@@ -119,12 +119,12 @@ def ms_bfs_based_rpq(
 
     dfa_final_states_ind = dfa_adjacency_matrix_fa.final_states_ind
 
-    res = set()
-
     nfa_final_states_ind = nfa_adjacency_matrix_fa.final_states_ind
     nfa_final_states_vector = create_bool_vector(
         nfa_adjacency_matrix_fa.states_number, nfa_final_states_ind
     )
+
+    res = set()
 
     for i, nfa_start_state_ind in enumerate(nfa_start_states_ind, 0):
         for dfa_final_state_ind in dfa_final_states_ind:
