@@ -21,7 +21,7 @@ def hellings_based_cfpq(
 
     for u, v, label in edges:
         for production in wcnf_productions:
-            if Terminal(label) in production.body:
+            if [Terminal(label)] == production.body:
                 m.add((production.head, u, v))
                 r.add((production.head, u, v))
 
