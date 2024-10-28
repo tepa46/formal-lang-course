@@ -1,4 +1,4 @@
-from pyformlang.cfg import CFG, Terminal, Variable, Epsilon
+from pyformlang.cfg import CFG, Terminal
 import networkx as nx
 from scipy import sparse
 
@@ -6,10 +6,10 @@ from project.cfg_utils import cfg_to_weak_normal_form
 
 
 def hellings_based_cfpq(
-        cfg: CFG,
-        graph: nx.DiGraph,
-        start_nodes: set[int] = None,
-        final_nodes: set[int] = None,
+    cfg: CFG,
+    graph: nx.DiGraph,
+    start_nodes: set[int] = None,
+    final_nodes: set[int] = None,
 ) -> set[tuple[int, int]]:
     wcnf = cfg_to_weak_normal_form(cfg)
     wcnf_productions = wcnf.productions
@@ -52,9 +52,9 @@ def hellings_based_cfpq(
     result = set()
     for N, a, b in r:
         if (
-                N == wcnf.start_symbol
-                and (not start_nodes or a in start_nodes)
-                and (not final_nodes or b in final_nodes)
+            N == wcnf.start_symbol
+            and (not start_nodes or a in start_nodes)
+            and (not final_nodes or b in final_nodes)
         ):
             result.add((a, b))
 
@@ -62,10 +62,10 @@ def hellings_based_cfpq(
 
 
 def matrix_based_cfpq(
-        cfg: CFG,
-        graph: nx.DiGraph,
-        start_nodes: set[int] = None,
-        final_nodes: set[int] = None,
+    cfg: CFG,
+    graph: nx.DiGraph,
+    start_nodes: set[int] = None,
+    final_nodes: set[int] = None,
 ) -> set[tuple[int, int]]:
     node_to_ind = {}
     ind_to_node = {}
@@ -76,21 +76,24 @@ def matrix_based_cfpq(
 
     wcnf = cfg_to_weak_normal_form(cfg)
     wcnf_productions = wcnf.productions
+    wcnf_nullable_symbols = wcnf.get_nullable_symbols()
 
     matrix_size = graph.number_of_nodes()
-    Nmatrices = {N: sparse.csr_matrix((matrix_size, matrix_size), dtype=bool) for N in wcnf.variables}
+    Nmatrices = {
+        N: sparse.csr_matrix((matrix_size, matrix_size), dtype=bool)
+        for N in wcnf.variables
+    }
 
     edges = graph.edges(data="label")
 
     for u, v, label in edges:
         for production in wcnf_productions:
-            if [Terminal(label)] == production.body:
+            if production.body == [Terminal(label)]:
                 Nmatrices[production.head][node_to_ind[u], node_to_ind[v]] = True
 
-    for production in wcnf_productions:
-        if production.body == [Epsilon()]:
-            for i in range(matrix_size):
-                Nmatrices[production.head][i, i] = True
+    for sym in wcnf_nullable_symbols:
+        for i in range(matrix_size):
+            Nmatrices[sym][i, i] = True
 
     m: set = wcnf.variables
 
@@ -98,19 +101,23 @@ def matrix_based_cfpq(
         N = m.pop()
         for production in wcnf_productions:
             if N in production.body:
-                new_matrix: sparse.csr_matrix = Nmatrices[production.body[0]] @ Nmatrices[production.body[1]]
+                updated_Nmatrix: sparse.csr_matrix = (
+                    Nmatrices[production.body[0]] @ Nmatrices[production.body[1]]
+                )
 
-                if (new_matrix > Nmatrices[production.head]).count_nonzero() > 0:
-                    Nmatrices[production.head] += new_matrix
+                if (updated_Nmatrix > Nmatrices[production.head]).count_nonzero() > 0:
+                    Nmatrices[production.head] += updated_Nmatrix
                     m.add(production.head)
 
     result = set()
 
-    r = Nmatrices[wcnf.start_symbol]
-
     for i in range(matrix_size):
         for j in range(matrix_size):
-            if r[i, j] and (not start_nodes or ind_to_node[i] in start_nodes) and (not final_nodes or ind_to_node[j] in final_nodes):
+            if (
+                Nmatrices[wcnf.start_symbol][i, j]
+                and (not start_nodes or ind_to_node[i] in start_nodes)
+                and (not final_nodes or ind_to_node[j] in final_nodes)
+            ):
                 result.add((ind_to_node[i], ind_to_node[j]))
 
     return result
