@@ -4,8 +4,8 @@ from antlr4 import (
     ParserRuleContext,
 )
 
-from project.qlg.QGL_grammarLexer import QGL_grammarLexer
-from project.qlg.QGL_grammarParser import QGL_grammarParser
+from project.qgl.QGL_grammarLexer import QGL_grammarLexer
+from project.qgl.QGL_grammarParser import QGL_grammarParser
 
 
 def program_to_tree(program: str) -> tuple[ParserRuleContext, bool]:
