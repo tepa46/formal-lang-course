@@ -1,8 +1,10 @@
 from pyformlang.cfg import CFG, Terminal
 from pyformlang.rsa import RecursiveAutomaton
+from pyformlang.finite_automaton import State, EpsilonNFA, Symbol
 
 import networkx as nx
 from scipy import sparse
+from typing import Any
 
 from project.graph_utils import graph_to_nfa
 from project.adjacency_matrix_fa import AdjacencyMatrixFA, intersect_automata
@@ -210,3 +212,123 @@ def tensor_based_cfpq(
                     result.add((i_state, j_state))
 
     return result
+
+
+class RsmState:
+    dfa_label: Any
+    dfa_state: State
+
+
+class GraphState(int):
+    def __init__(self, val):
+        super.__init__(val)
+
+
+class GSSGraph(nx.MultiDiGraph):
+    def __init__(self):
+        super().__init__()
+
+
+class GSSNode:
+    rsm_state: RsmState
+    graph_state: GraphState
+    return_values: set[Any]
+
+    def __eq__(self, other):
+        pass
+
+    def __hash__(self):
+        pass
+
+
+class GLLConfiguration:
+    rsm_state: RsmState
+    graph_state: GraphState
+    gss_node: GSSNode
+
+    def __eq__(self, other):
+        pass
+
+    def __hash__(self):
+        pass
+
+
+class GLLSolver:
+    _gss_graph: GSSGraph
+    _rsm: RecursiveAutomaton
+    _graph: nx.DiGraph
+
+    # TODO: set -> dict[Symbol, RsmState]
+    def _out_rsm_states_by_rsm_state(
+        self, rsm_state: RsmState
+    ) -> set[Symbol, RsmState]:
+        dfa: EpsilonNFA = self._rsm.boxes[rsm_state.dfa_label]
+        dfa_network = dfa.to_networkx()
+
+        res = set()
+
+        for u, v, label in dfa_network.edges(data="label"):
+            if u == rsm_state.dfa_state:
+                res.add((label, v))
+
+        return res
+
+    # TODO: set -> dict[Symbol, GraphState]
+    def _out_graph_states_by_graph_state(
+        self, graph_state: GraphState
+    ) -> set[Symbol, GraphState]:
+        res = set()
+
+        for u, v, label in self._graph.edges:
+            if u == graph_state:
+                res.add((label, v))
+
+        return res
+
+    def _term_action(self, config: GLLConfiguration):
+        out_rsm_states = self._out_rsm_states_by_rsm_state(config.rsm_state)
+        out_rsm_labels = set(sym for sym in out_rsm_states)
+
+        out_graph_states = self._out_graph_states_by_graph_state(config.graph_state)
+        out_graph_labels = set(sym for sym in out_graph_states)
+
+        labels = out_rsm_labels & out_graph_labels
+
+        for label in labels:
+            pass
+
+    def _non_term_action(self):
+        out_rsm_states = self._out_rsm_states_by_rsm_state(config.rsm_state)
+        out_rsm_labels = set(sym for sym in out_rsm_states)
+
+        out_graph_states = self._out_graph_states_by_graph_state(config.graph_state)
+
+        for label in out_rsm_labels:
+            pass
+
+    def _return_action(self):
+        pass
+
+    def solve_cfpq(
+        self,
+        rsm: RecursiveAutomaton,
+        graph: nx.DiGraph,
+        start_nodes: set[int],
+        final_nodes: set[int],
+    ) -> set[tuple[int, int]]:
+        self._gss_graph = GSSGraph()
+        self._rsm = rsm
+        self._graph = graph
+
+
+def gll_based_cfpq(
+    rsm: RecursiveAutomaton,
+    graph: nx.DiGraph,
+    start_nodes: set[int] = None,
+    final_nodes: set[int] = None,
+) -> set[tuple[int, int]]:
+    start_nodes = start_nodes if start_nodes else graph.nodes
+    final_nodes = final_nodes if final_nodes else final_nodes
+
+    gll_solver = GLLSolver()
+    return gll_solver.solve_cfpq(rsm, gll_solver, start_nodes, final_nodes)
