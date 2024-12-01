@@ -9,7 +9,6 @@ from project.qlg.QGL_grammarParser import QGL_grammarParser
 
 
 def program_to_tree(program: str) -> tuple[ParserRuleContext, bool]:
-    print(program)
     input_stream = InputStream(program)
     lexer = QGL_grammarLexer(input_stream)
     stream = CommonTokenStream(lexer)
@@ -22,7 +21,6 @@ def program_to_tree(program: str) -> tuple[ParserRuleContext, bool]:
     if parser.getNumberOfSyntaxErrors() != 0:
         return None, False
 
-    print(tree.toStringTree(recog=parser))
     return tree, True
 
 

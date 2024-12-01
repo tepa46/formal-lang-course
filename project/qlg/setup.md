@@ -1,6 +1,6 @@
 MacOS
 ```shell
-brew install antlr 
+brew install antlr
 
-antlr QGL_grammar.g4 -Dlanguage=Python3 
+antlr QGL_grammar.g4 -Dlanguage=Python3
 ```
