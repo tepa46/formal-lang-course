@@ -1,14 +1,14 @@
-from pyformlang.cfg import CFG, Terminal
-from pyformlang.rsa import RecursiveAutomaton
-from pyformlang.finite_automaton import State, EpsilonNFA, Symbol
+from dataclasses import dataclass
 
 import networkx as nx
+from pyformlang.cfg import CFG, Terminal
+from pyformlang.finite_automaton import State, Symbol
+from pyformlang.rsa import RecursiveAutomaton
 from scipy import sparse
-from typing import Any
 
-from project.graph_utils import graph_to_nfa
 from project.adjacency_matrix_fa import AdjacencyMatrixFA, intersect_automata
 from project.cfg_utils import cfg_to_weak_normal_form
+from project.graph_utils import graph_to_nfa
 from project.rsm_utils import rsm_to_nfa
 
 
@@ -214,111 +214,259 @@ def tensor_based_cfpq(
     return result
 
 
+@dataclass(frozen=True)
 class RsmState:
-    dfa_label: Any
+    dfa_label: Symbol
     dfa_state: State
 
 
+def get_rsm_state_to_out_states(
+    rsm: RecursiveAutomaton, rsm_state: RsmState
+) -> dict[Symbol, RsmState]:
+    dfa = rsm.boxes[rsm_state.dfa_label].dfa
+    dfa_network = dfa.to_networkx()
+
+    res = {}
+
+    for u, v, label in dfa_network.edges(data="label"):
+        if u == rsm_state.dfa_state:
+            res.setdefault(label, set()).add(RsmState(rsm_state.dfa_label, State(v)))
+
+    return res
+
+
 class GraphState(int):
-    def __init__(self, val):
-        super.__init__(val)
+    def __new__(cls, val):
+        return super().__new__(cls, val)
+
+
+def get_graph_state_to_out_states(
+    graph: nx.DiGraph, graph_state: GraphState
+) -> dict[Symbol, GraphState]:
+    res = {}
+
+    for u, v, label in graph.edges(data="label"):
+        if u == graph_state:
+            res.setdefault(label, set()).add(GraphState(v))
+
+    return res
 
 
 class GSSGraph(nx.MultiDiGraph):
     def __init__(self):
         super().__init__()
 
+    def find_node_in_graph(self, node_to_find):
+        for node in list(self.nodes):
+            if node == node_to_find:
+                return node
+
+        return None
+
 
 class GSSNode:
     rsm_state: RsmState
     graph_state: GraphState
-    return_values: set[Any]
+    return_values: set[GraphState]
+
+    def __init__(self, rsm_state, graph_state):
+        self.rsm_state = rsm_state
+        self.graph_state = graph_state
+        self.return_values = set()
 
     def __eq__(self, other):
-        pass
+        return (
+            self.rsm_state == other.rsm_state and self.graph_state == other.graph_state
+        )
 
     def __hash__(self):
-        pass
+        return hash((self.rsm_state, self.graph_state))
 
 
+@dataclass(frozen=True)
 class GLLConfiguration:
     rsm_state: RsmState
     graph_state: GraphState
     gss_node: GSSNode
 
-    def __eq__(self, other):
-        pass
-
-    def __hash__(self):
-        pass
-
 
 class GLLSolver:
     _gss_graph: GSSGraph
     _rsm: RecursiveAutomaton
+    _rsm_state_to_out_states: dict
     _graph: nx.DiGraph
+    _graph_state_to_out_states: dict
 
-    # TODO: set -> dict[Symbol, RsmState]
-    def _out_rsm_states_by_rsm_state(
-        self, rsm_state: RsmState
-    ) -> set[Symbol, RsmState]:
-        dfa: EpsilonNFA = self._rsm.boxes[rsm_state.dfa_label]
-        dfa_network = dfa.to_networkx()
+    def __init__(self, rsm: RecursiveAutomaton, graph: nx.DiGraph):
+        self._rsm = rsm
+        self._rsm_state_to_out_states = {}
 
-        res = set()
+        for box in self._rsm.boxes.values():
+            for state in box.dfa.states:
+                rsm_state = RsmState(box.label, state)
 
-        for u, v, label in dfa_network.edges(data="label"):
-            if u == rsm_state.dfa_state:
-                res.add((label, v))
+                self._rsm_state_to_out_states.setdefault(rsm_state, {})
 
-        return res
+                state_to_out_states = get_rsm_state_to_out_states(self._rsm, rsm_state)
 
-    # TODO: set -> dict[Symbol, GraphState]
-    def _out_graph_states_by_graph_state(
-        self, graph_state: GraphState
-    ) -> set[Symbol, GraphState]:
-        res = set()
+                for label in state_to_out_states.keys():
+                    self._rsm_state_to_out_states[rsm_state].setdefault(label, set())
 
-        for u, v, label in self._graph.edges:
-            if u == graph_state:
-                res.add((label, v))
+                    self._rsm_state_to_out_states[rsm_state][label] = (
+                        state_to_out_states[label]
+                    )
 
-        return res
+        self._graph = graph
+        self._graph_state_to_out_states = {}
 
-    def _term_action(self, config: GLLConfiguration):
-        out_rsm_states = self._out_rsm_states_by_rsm_state(config.rsm_state)
-        out_rsm_labels = set(sym for sym in out_rsm_states)
+        for node in self._graph.nodes:
+            graph_state = GraphState(node)
 
-        out_graph_states = self._out_graph_states_by_graph_state(config.graph_state)
-        out_graph_labels = set(sym for sym in out_graph_states)
+            self._graph_state_to_out_states.setdefault(graph_state, {})
 
-        labels = out_rsm_labels & out_graph_labels
+            state_to_out_states = get_graph_state_to_out_states(
+                self._graph, graph_state
+            )
+
+            for label in state_to_out_states.keys():
+                self._graph_state_to_out_states[graph_state].setdefault(label, set())
+
+                self._graph_state_to_out_states[graph_state][label] = (
+                    state_to_out_states[label]
+                )
+
+    def get_init_configs(self, start_nodes: set[int]) -> set[GLLConfiguration]:
+        rsm_start_label = self._rsm.initial_label
+        rsm_start_dfa = self._rsm.boxes[rsm_start_label].dfa
+        rsm_start_state = RsmState(rsm_start_label, rsm_start_dfa.start_state)
+
+        init_configs = set()
+
+        for start_node in start_nodes:
+            graph_state = GraphState(start_node)
+            gss_node = GSSNode(rsm_start_state, graph_state)
+            gll_config = GLLConfiguration(rsm_start_state, graph_state, gss_node)
+
+            self._gss_graph.add_node(gss_node)
+            init_configs.add(gll_config)
+
+        return init_configs
+
+    def do_algo_step(self, config: GLLConfiguration) -> set[GLLConfiguration]:
+        new_configs = set()
+
+        new_configs |= self.do_term_algo_step(config)
+        new_configs |= self.do_non_term_algo_step(config)
+        new_configs |= self.do_return_algo_step(config)
+
+        return new_configs
+
+    def do_term_algo_step(self, config: GLLConfiguration) -> set[GLLConfiguration]:
+        labels = (
+            self._rsm_state_to_out_states[config.rsm_state].keys()
+            & self._graph_state_to_out_states[config.graph_state].keys()
+        )
+
+        new_configs = set()
 
         for label in labels:
-            pass
+            for new_rsm_state in self._rsm_state_to_out_states[config.rsm_state][label]:
+                for new_graph_state in self._graph_state_to_out_states[
+                    config.graph_state
+                ][label]:
+                    new_configs.add(
+                        GLLConfiguration(
+                            new_rsm_state, new_graph_state, config.gss_node
+                        )
+                    )
 
-    def _non_term_action(self):
-        out_rsm_states = self._out_rsm_states_by_rsm_state(config.rsm_state)
-        out_rsm_labels = set(sym for sym in out_rsm_states)
+        return new_configs
 
-        out_graph_states = self._out_graph_states_by_graph_state(config.graph_state)
+    def do_non_term_algo_step(self, config: GLLConfiguration) -> set[GLLConfiguration]:
+        labels = (
+            self._rsm.labels & self._rsm_state_to_out_states[config.rsm_state].keys()
+        )
 
-        for label in out_rsm_labels:
-            pass
+        new_configs = set()
 
-    def _return_action(self):
-        pass
+        for label in labels:
+            new_rsm = self._rsm.boxes[label].dfa
+            new_rsm_start_state = RsmState(label, new_rsm.start_state)
+            new_gss_node = GSSNode(new_rsm_start_state, config.graph_state)
+
+            node_in_graph = self._gss_graph.find_node_in_graph(new_gss_node)
+
+            for rsm_state in self._rsm_state_to_out_states[config.rsm_state][label]:
+                if node_in_graph is not None:
+                    for return_graph_state in node_in_graph.return_values:
+                        new_configs.add(
+                            GLLConfiguration(
+                                rsm_state, return_graph_state, config.gss_node
+                            )
+                        )
+                else:
+                    node_in_graph = new_gss_node
+
+                self._gss_graph.add_node(node_in_graph)
+                self._gss_graph.add_edge(
+                    node_in_graph, config.gss_node, label=rsm_state
+                )
+                new_configs.add(
+                    GLLConfiguration(
+                        new_rsm_start_state, config.graph_state, node_in_graph
+                    )
+                )
+
+        return new_configs
+
+    def do_return_algo_step(self, config: GLLConfiguration) -> set[GLLConfiguration]:
+        if (
+            config.rsm_state.dfa_state
+            not in self._rsm.boxes[config.rsm_state.dfa_label].dfa.final_states
+        ):
+            return set()
+
+        config.gss_node.return_values.add(config.graph_state)
+
+        new_configs = set()
+
+        for u, v, return_rsm_state in self._gss_graph.edges(data="label"):
+            if u == config.gss_node:
+                new_configs.add(
+                    GLLConfiguration(return_rsm_state, config.graph_state, v)
+                )
+
+        return new_configs
 
     def solve_cfpq(
-        self,
-        rsm: RecursiveAutomaton,
-        graph: nx.DiGraph,
-        start_nodes: set[int],
-        final_nodes: set[int],
+        self, start_nodes: set[int], final_nodes: set[int]
     ) -> set[tuple[int, int]]:
         self._gss_graph = GSSGraph()
-        self._rsm = rsm
-        self._graph = graph
+
+        init_configs = self.get_init_configs(start_nodes)
+        w = init_configs.copy()
+        r = init_configs.copy()
+
+        while w:
+            cur_config = w.pop()
+
+            new_configs = self.do_algo_step(cur_config)
+
+            for new_config in new_configs:
+                if new_config not in r:
+                    w.add(new_config)
+                    r.add(new_config)
+
+        res = set()
+
+        for init_config in init_configs:
+            init_gss_node = init_config.gss_node
+
+            for return_value in init_gss_node.return_values:
+                if return_value in final_nodes:
+                    res.add((init_config.graph_state, return_value))
+
+        return res
 
 
 def gll_based_cfpq(
@@ -328,7 +476,7 @@ def gll_based_cfpq(
     final_nodes: set[int] = None,
 ) -> set[tuple[int, int]]:
     start_nodes = start_nodes if start_nodes else graph.nodes
-    final_nodes = final_nodes if final_nodes else final_nodes
+    final_nodes = final_nodes if final_nodes else graph.nodes
 
-    gll_solver = GLLSolver()
-    return gll_solver.solve_cfpq(rsm, gll_solver, start_nodes, final_nodes)
+    gll_solver = GLLSolver(rsm, graph)
+    return gll_solver.solve_cfpq(start_nodes, final_nodes)
