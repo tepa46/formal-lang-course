@@ -17,6 +17,9 @@ dependencies = [
     "scipy>=1.14.1",
     "grammarinator @ git+https://github.com/renatahodovan/grammarinator.git@f3ffa71",
     "pyformlang>=1.0.7",
+    "ipykernel>=6.29.5",
+    "jupyter>=1.0",
+    "matplotlib>=3.9.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.10"
@@ -36,3 +39,7 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/formal_lang_course"]
+
+[tool.poetry.dependencies]
+notebook = ">=6.0.0"
+
