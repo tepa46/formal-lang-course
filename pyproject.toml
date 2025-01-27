@@ -42,4 +42,3 @@ packages = ["src/formal_lang_course"]
 
 [tool.poetry.dependencies]
 notebook = ">=6.0.0"
-

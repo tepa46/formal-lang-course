@@ -269,7 +269,9 @@ def update_row_coo(
             ).asformat(sparse.coo_matrix((0, 0)).format)
 
             updated_data += updated_extracted_matrix.data.tolist()
-            updated_row += [elm + ind * k for elm in updated_extracted_matrix.row.tolist()]
+            updated_row += [
+                elm + ind * k for elm in updated_extracted_matrix.row.tolist()
+            ]
             updated_col += updated_extracted_matrix.col.tolist()
 
         updated_decomposed_fronts[label] = sparse.coo_matrix(

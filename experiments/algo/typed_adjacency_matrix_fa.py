@@ -128,7 +128,7 @@ def intersect_automata(
     automaton1: AdjacencyMatrixFA, automaton2: AdjacencyMatrixFA
 ) -> AdjacencyMatrixFA:
     if automaton1.sparse_matrix_type != automaton2.sparse_matrix_type:
-        raise ValueError(f"automata must have the same sparse_matrix_type")
+        raise ValueError("automata must have the same sparse_matrix_type")
     sparse_matrix_type = automaton1.sparse_matrix_type
 
     n = automaton1.states_number
